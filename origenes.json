@@ -1,0 +1,71 @@
+# Outlook → SharePoint con Power Automate
+
+Este flujo no llama directamente a GitHub ni a Claude. Solo conserva el correo
+en SharePoint; el proceso automático lo toma después. Así no se necesita la
+acción HTTP Premium.
+
+## Crear el flujo
+
+1. Crea un **Flujo de nube automatizado**.
+2. Disparador:
+   **Office 365 Outlook — Cuando llega un correo nuevo (V3)**.
+3. Carpeta: `Bandeja de entrada`.
+4. Configura el remitente y/o filtro de asunto real del reporte.
+5. No solicites adjuntos: la fuente está escrita en el cuerpo.
+6. Agrega la acción **Componer** con este objeto y reemplaza cada expresión por
+   el contenido dinámico equivalente si tu interfaz usa nombres diferentes:
+
+```json
+{
+  "message_id": "@{triggerOutputs()?['body/id']}",
+  "sender": "@{triggerOutputs()?['body/from']?['emailAddress']?['address']}",
+  "subject": "@{triggerOutputs()?['body/subject']}",
+  "received_at": "@{triggerOutputs()?['body/receivedDateTime']}",
+  "body_html": "@{triggerOutputs()?['body/body']?['content']}"
+}
+```
+
+7. Agrega **SharePoint — Crear archivo**:
+   - Dirección del sitio: el sitio Tikee.
+   - Ruta de carpeta:
+     `/Tikee Adoption 360/entrada`
+   - Nombre de archivo:
+
+```text
+concat(
+  formatDateTime(triggerOutputs()?['body/receivedDateTime'],'yyyyMMdd-HHmmss'),
+  '-',
+  guid(),
+  '.json'
+)
+```
+
+   - Contenido del archivo:
+
+```text
+string(outputs('Componer'))
+```
+
+8. Guarda y prueba el flujo con un correo real.
+
+## Qué ocurre después
+
+1. El correo queda intacto en `entrada`.
+2. GitHub Actions lo descarga con una identidad de aplicación.
+3. Claude extrae Usuarios, Transferencias y Pagos de servicios.
+4. El código valida números, fecha, IFI duplicadas y bloques vacíos.
+5. SharePoint recibe la extracción normalizada, el consolidado mensual y el
+   `dashboard.json` que lee la aplicación.
+6. El original se archiva en `procesado/entrada/YYYY/MM`.
+
+## Errores
+
+Los archivos que no cumplen el contrato pasan a `rechazado`. La causa aparece
+en la sección **Últimos correos procesados** de la plataforma. Agrega una rama de
+Power Automate para avisar si **Crear archivo** falla; los errores posteriores
+se revisan en GitHub Actions y en la bitácora publicada.
+
+## Prueba de duplicados
+
+Reenvía el mismo contenido con el mismo identificador. La segunda entrada debe
+terminar en `procesado/entrada/duplicados` sin consumir otra solicitud a Claude.

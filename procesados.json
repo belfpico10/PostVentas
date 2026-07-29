@@ -1,0 +1,27 @@
+# Contrato del correo diario
+
+El flujo puede limitar los correos al remitente y asunto configurados como
+variables de GitHub:
+
+- Remitente: `automatizaciones@tikee.tech`
+- Asunto: `Resumen de usuario y transaccionales de canales electrónicos`
+
+El cuerpo debe incluir la fecha de emisión y estos tres bloques:
+
+1. Usuarios activos: IFI, usuarios activos acumulados, usuarios activos del día
+   y total de usuarios.
+2. Transferencias: operaciones internas, externas y tarjetas por web y móvil;
+   número y monto; totales por canales.
+3. Pagos de servicios: número y monto por web y móvil; totales por canales.
+
+Si ambas variables se dejan vacías, Power Automate será el único filtro. Para
+producción se recomienda configurar por lo menos el remitente.
+
+Claude interpreta cambios razonables de orden, espacios, separadores de miles o
+formato HTML. El código no acepta filas sin IFI, números negativos, fechas
+inválidas, bloques vacíos ni IFI duplicadas dentro del mismo bloque.
+
+Si una IFI aparece en Usuarios pero falta en Transferencias o Pagos de servicios,
+el correo se procesa y la diferencia queda registrada como advertencia. Un mismo
+`message_id` o cuerpo idéntico no puede procesarse dos veces. El archivo fuente,
+la extracción normalizada y la bitácora se conservan en SharePoint.

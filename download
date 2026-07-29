@@ -1,0 +1,43 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+
+const outputDirectory = resolve(process.env.OUTPUT_DIRECTORY || "dist");
+const tenantId = process.env.MS_TENANT_ID || "";
+const spaClientId = process.env.MS_SPA_CLIENT_ID || "";
+const sharePointHostname = process.env.SHAREPOINT_HOSTNAME || "";
+const sharePointSitePath = process.env.SHAREPOINT_SITE_PATH || "";
+const documentLibrary = process.env.SHAREPOINT_LIBRARY || "Documentos";
+const dataRoot = process.env.SHAREPOINT_DATA_ROOT || "Tikee Adoption 360";
+const dashboardFile =
+  process.env.SHAREPOINT_DASHBOARD_FILE || "publicado/dashboard.json";
+const dataMonths = Math.min(
+  Math.max(Number.parseInt(process.env.DATA_MONTHS || "24", 10) || 24, 1),
+  36
+);
+
+if (!tenantId || !spaClientId || !sharePointHostname || !sharePointSitePath) {
+  throw new Error(
+    "Faltan MS_TENANT_ID, MS_SPA_CLIENT_ID, SHAREPOINT_HOSTNAME o SHAREPOINT_SITE_PATH."
+  );
+}
+
+await mkdir(outputDirectory, { recursive: true });
+await writeFile(
+  resolve(outputDirectory, "config.js"),
+  `window.TIKEE_CONFIG = ${JSON.stringify(
+    {
+      tenantId,
+      spaClientId,
+      sharePointHostname,
+      sharePointSitePath,
+      documentLibrary,
+      dataRoot,
+      dashboardFile,
+      graphScopes: ["https://graph.microsoft.com/Sites.Selected"],
+      dataMonths
+    },
+    null,
+    2
+  )};\n`,
+  "utf8"
+);

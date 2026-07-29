@@ -1,0 +1,107 @@
+# Despliegue completo
+
+## 1. Preparar SharePoint
+
+Crea o elige un sitio, por ejemplo:
+
+```text
+https://TU_EMPRESA.sharepoint.com/sites/TikeeAdoption360
+```
+
+En su biblioteca de documentos crea la carpeta `Tikee Adoption 360` y copia
+dentro el contenido de `sharepoint-seed/Tikee Adoption 360`.
+
+El proceso automático completa esta estructura:
+
+```text
+Tikee Adoption 360/
+├── entrada/                       correos creados por Power Automate
+├── procesado/
+│   ├── entrada/YYYY/MM/           originales ya procesados
+│   └── diario/YYYY/MM/            extracción normalizada y auditable
+├── consolidado/mensual/           un JSON por mes
+├── publicado/dashboard.json       contrato consumido por la plataforma
+├── estado/procesados.json         control de duplicados
+├── config/origenes.json           origen Tikee/Financoop por IFI
+└── rechazado/                     entradas que requieren revisión
+```
+
+La fuente central es SharePoint. No copies `dashboard.json` al repositorio
+GitHub.
+
+## 2. Configurar Microsoft Entra
+
+Sigue `docs/ENTRA_SHAREPOINT.md`. Se utilizan dos aplicaciones:
+
+- **SPA**: inicio de sesión de la página; permiso de lectura al sitio.
+- **Worker**: GitHub Actions; permiso de escritura al mismo sitio.
+
+Separarlas evita exponer el secreto del proceso automático en el navegador.
+
+## 3. Configurar Power Automate
+
+Sigue `docs/POWER_AUTOMATE.md`. El flujo usa conectores estándar de Microsoft
+365 y guarda el cuerpo del correo como un archivo JSON en `entrada`.
+
+## 4. Subir a GitHub
+
+1. Crea un repositorio y sube el contenido de esta carpeta.
+2. En **Settings → Pages**, selecciona **GitHub Actions**.
+3. En **Settings → Secrets and variables → Actions → Variables** crea:
+
+| Variable | Ejemplo |
+|---|---|
+| `MS_TENANT_ID` | UUID del tenant |
+| `MS_SPA_CLIENT_ID` | UUID de la aplicación SPA |
+| `SHAREPOINT_HOSTNAME` | `TU_EMPRESA.sharepoint.com` |
+| `SHAREPOINT_SITE_PATH` | `/sites/TikeeAdoption360` |
+| `SHAREPOINT_LIBRARY` | `Documentos` |
+| `SHAREPOINT_DATA_ROOT` | `Tikee Adoption 360` |
+| `SHAREPOINT_DASHBOARD_FILE` | `publicado/dashboard.json` |
+| `DATA_MONTHS` | `24` |
+| `ANTHROPIC_MODEL` | `claude-sonnet-5` |
+| `ALLOWED_OUTLOOK_SENDER` | remitente esperado; puede quedar vacío |
+| `ALLOWED_OUTLOOK_SUBJECT` | asunto exacto esperado; puede quedar vacío |
+
+4. En **Actions secrets** crea:
+
+| Secreto | Contenido |
+|---|---|
+| `MS_TENANT_ID` | UUID del tenant |
+| `MS_WORKER_CLIENT_ID` | UUID de la aplicación Worker |
+| `MS_WORKER_CLIENT_SECRET` | secreto del Worker |
+| `ANTHROPIC_API_KEY` | clave de Anthropic |
+
+`MS_TENANT_ID` aparece como variable y secreto porque la publicación usa la
+variable y el proceso automático recibe solo secretos en su bloque sensible.
+
+5. Ejecuta **Publicar Tikee Adoption 360**.
+6. Copia la URL final de GitHub Pages y agrégala como URI SPA exacta en la
+   aplicación Entra. Si cambias la URL, vuelve a publicar.
+7. Ejecuta **Procesar correo y actualizar SharePoint**.
+
+## 5. Frecuencia
+
+El workflow revisa SharePoint cada hora entre 07:00 y 18:00 de Ecuador, de lunes
+a viernes. Si `entrada` está vacía, termina sin invocar a Claude. También puede
+ejecutarse manualmente.
+
+## 6. Prueba de aceptación
+
+- Power Automate crea un JSON en `entrada`.
+- El workflow lo mueve a `procesado/entrada/YYYY/MM`.
+- Existe una extracción en `procesado/diario/YYYY/MM`.
+- `publicado/dashboard.json` cambia su `generated_at`.
+- La plataforma exige inicio de sesión Microsoft 365.
+- Al pulsar **Actualizar ahora**, aparecen los días y períodos.
+- Un archivo duplicado no vuelve a llamar a Claude.
+- Una entrada inválida termina en `rechazado` y queda en la bitácora.
+- Los documentos exportados usan A4 vertical.
+- GitHub no contiene datos ni secretos.
+
+## 7. Recuperación
+
+SharePoint conserva historial de versiones si está habilitado en la biblioteca.
+Antes de una carga histórica masiva, activa ese historial. Para reprocesar una
+entrada rechazada, corrige el archivo, elimina su registro de
+`estado/procesados.json` y devuélvelo a `entrada`.

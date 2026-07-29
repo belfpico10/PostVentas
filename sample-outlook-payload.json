@@ -1,0 +1,270 @@
+const SPANISH_MONTHS = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre"
+];
+
+function numberValue(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function spanishMonth(dateValue) {
+  const [year, month] = dateValue.split("-").map(Number);
+  return `${SPANISH_MONTHS[month - 1]} ${year}`;
+}
+
+function median(values, fallback) {
+  if (!values.length) return fallback;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+export function normalizedToDaily(payload) {
+  const day = { u: {}, t: {}, p: {} };
+
+  for (const row of payload.usuarios || []) {
+    day.u[row.nombre_ifi] = [
+      numberValue(row.usuarios_activos),
+      numberValue(row.usuarios_activos_dia),
+      numberValue(row.total_usuarios)
+    ];
+  }
+
+  for (const row of payload.transferencias || []) {
+    const detailedWebCount =
+      numberValue(row.internas_numero_web) +
+      numberValue(row.externas_numero_web) +
+      numberValue(row.tarjetas_numero_web);
+    const detailedMobileCount =
+      numberValue(row.internas_numero_movil) +
+      numberValue(row.externas_numero_movil) +
+      numberValue(row.tarjetas_numero_movil);
+    const detailedWebAmount =
+      numberValue(row.internas_monto_web) +
+      numberValue(row.externas_monto_web) +
+      numberValue(row.tarjetas_monto_web);
+    const detailedMobileAmount =
+      numberValue(row.internas_monto_movil) +
+      numberValue(row.externas_monto_movil) +
+      numberValue(row.tarjetas_monto_movil);
+
+    const webCount = numberValue(row.numero_web) || detailedWebCount;
+    const mobileCount = numberValue(row.numero_movil) || detailedMobileCount;
+    const webAmount = numberValue(row.monto_web) || detailedWebAmount;
+    const mobileAmount = numberValue(row.monto_movil) || detailedMobileAmount;
+
+    day.t[row.nombre_ifi] = [
+      webCount,
+      mobileCount,
+      numberValue(row.total_numero_canales) || webCount + mobileCount,
+      webAmount,
+      mobileAmount,
+      numberValue(row.total_monto_canales) || webAmount + mobileAmount
+    ];
+  }
+
+  for (const row of payload.pagos_servicios || []) {
+    const webCount = numberValue(row.numero_web);
+    const mobileCount = numberValue(row.numero_movil);
+    const webAmount = numberValue(row.monto_web);
+    const mobileAmount = numberValue(row.monto_movil);
+    day.p[row.nombre_ifi] = [
+      webCount,
+      mobileCount,
+      numberValue(row.total_numero_canales) || webCount + mobileCount,
+      webAmount,
+      mobileAmount,
+      numberValue(row.total_monto_canales) || webAmount + mobileAmount
+    ];
+  }
+  return day;
+}
+
+export function trimDailyMonths(daily, numberOfMonths) {
+  const dates = Object.keys(daily).sort();
+  if (!dates.length) return {};
+  const latest = new Date(`${dates[dates.length - 1]}T00:00:00Z`);
+  latest.setUTCMonth(latest.getUTCMonth() - Math.max(numberOfMonths - 1, 0));
+  latest.setUTCDate(1);
+  const cutoff = latest.toISOString().slice(0, 10);
+  return Object.fromEntries(
+    Object.entries(daily).filter(([date]) => date >= cutoff)
+  );
+}
+
+export function monthlyFromDaily(daily, origins = {}) {
+  const working = {};
+  const dates = Object.keys(daily).sort();
+
+  for (const date of dates) {
+    const month = spanishMonth(date);
+    const day = daily[date];
+    working[month] ||= {};
+    const names = new Set([
+      ...Object.keys(day.u || {}),
+      ...Object.keys(day.t || {}),
+      ...Object.keys(day.p || {})
+    ]);
+
+    for (const name of names) {
+      const row = (working[month][name] ||= {
+        nombre: name,
+        origen: origins[name] || "Tikee",
+        fecha: date,
+        usuariosActivos: 0,
+        totalRegistrados: 0,
+        usuariosNuevos: 0,
+        transacciones: 0,
+        volumen: 0,
+        comision: 0,
+        usuariosProblema: 0,
+        eventosFriccion: 0,
+        eventosActivacionFallida: 0,
+        eventosPagoFallido: 0,
+        eventosTransaccionFallida: 0,
+        inactivos30: 0,
+        inactivos: 0,
+        appMovil: 0,
+        appmovilDolares: 0,
+        wallet: 0,
+        walletDolares: 0,
+        web: 0,
+        webDolares: 0,
+        comisionCert: 0,
+        comisionTransf: 0,
+        comisionServ: 0,
+        transacionesDEUNA: 0,
+        transacionesDEUNADolares: 0,
+        sms: 0
+      });
+      const users = (day.u && day.u[name]) || [0, 0, 0];
+      const transfers = (day.t && day.t[name]) || [0, 0, 0, 0, 0, 0];
+      const payments = (day.p && day.p[name]) || [0, 0, 0, 0, 0, 0];
+
+      row.fecha = date;
+      row.usuariosActivos = numberValue(users[0]);
+      row.totalRegistrados = numberValue(users[2]);
+      row.usuariosNuevos += numberValue(users[1]);
+      row.transacciones +=
+        numberValue(transfers[2]) + numberValue(payments[2]);
+      row.volumen += numberValue(transfers[5]) + numberValue(payments[5]);
+      row.web += numberValue(transfers[0]) + numberValue(payments[0]);
+      row.appMovil += numberValue(transfers[1]) + numberValue(payments[1]);
+      row.webDolares +=
+        numberValue(transfers[3]) + numberValue(payments[3]);
+      row.appmovilDolares +=
+        numberValue(transfers[4]) + numberValue(payments[4]);
+    }
+  }
+
+  const result = {};
+  for (const [month, rowsByName] of Object.entries(working)) {
+    const cooperativas = Object.values(rowsByName).map((row) => {
+      row.tasaActivacion = row.totalRegistrados
+        ? (row.usuariosActivos / row.totalRegistrados) * 100
+        : 0;
+      row.tasaProblemas = row.totalRegistrados
+        ? (row.usuariosProblema / row.totalRegistrados) * 100
+        : 0;
+      row.tasaInactividad = row.totalRegistrados
+        ? (row.inactivos30 / row.totalRegistrados) * 100
+        : 0;
+      row.tasaCrecimiento = row.totalRegistrados
+        ? (row.usuariosNuevos / row.totalRegistrados) * 100
+        : 0;
+      row.transaccionesXUsuario = row.usuariosActivos
+        ? row.transacciones / row.usuariosActivos
+        : 0;
+      row.volumenXTransaccion = row.transacciones
+        ? row.volumen / row.transacciones
+        : 0;
+      const engagement = Math.min((row.transaccionesXUsuario / 3) * 100, 100);
+      const activity = Math.min(row.tasaActivacion, 100);
+      const inactivityScore = Math.max(100 - row.tasaInactividad * 2, 0);
+      row.healthScore = Math.round(
+        activity * 0.4 + engagement * 0.35 + inactivityScore * 0.25
+      );
+      row.estadoActivacion =
+        activity >= 60 ? "bueno" : activity >= 40 ? "moderado" : "plan-accion";
+      row.churnRisk = Math.min(
+        Math.round(
+          (100 - activity) * 0.5 +
+            (100 - engagement) * 0.3 +
+            row.tasaInactividad * 0.2
+        ),
+        100
+      );
+      return row;
+    });
+
+    const activationMedian = median(
+      cooperativas.map((row) => row.tasaActivacion),
+      40
+    );
+    const volumeMedian = median(
+      cooperativas.map((row) => row.volumen),
+      300000
+    );
+    for (const row of cooperativas) {
+      row.segmento =
+        row.tasaActivacion >= activationMedian && row.volumen >= volumeMedian
+          ? "STAR"
+          : row.tasaActivacion >= activationMedian
+            ? "POTENTIAL"
+            : row.volumen >= volumeMedian
+              ? "AT_RISK"
+              : "LOST";
+    }
+
+    const totals = cooperativas.reduce(
+      (acc, row) => {
+        acc.totalUsuariosActivos += row.usuariosActivos;
+        acc.totalRegistrados += row.totalRegistrados;
+        acc.totalTransacciones += row.transacciones;
+        acc.totalVolumen += row.volumen;
+        acc.totalComision += row.comision;
+        return acc;
+      },
+      {
+        totalUsuariosActivos: 0,
+        totalRegistrados: 0,
+        totalTransacciones: 0,
+        totalVolumen: 0,
+        totalComision: 0
+      }
+    );
+
+    result[month] = {
+      cooperativas,
+      meses: [month],
+      totalCooperativas: cooperativas.length,
+      ...totals,
+      tasaActivacionPromedio: totals.totalRegistrados
+        ? (totals.totalUsuariosActivos / totals.totalRegistrados) * 100
+        : 0,
+      origenes: [...new Set(cooperativas.map((row) => row.origen))]
+    };
+  }
+  return result;
+}
+
+export function monthlyFileName(monthLabel) {
+  const monthMap = Object.fromEntries(
+    SPANISH_MONTHS.map((month, index) => [month.toLowerCase(), index + 1])
+  );
+  const [month, year] = monthLabel.toLowerCase().split(" ");
+  return `${year}-${String(monthMap[month]).padStart(2, "0")}.json`;
+}
