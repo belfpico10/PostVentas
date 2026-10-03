@@ -1,0 +1,17 @@
+{
+  "responder_a": "postventa@TU_EMPRESA.com",
+  "contacto": "postventa@TU_EMPRESA.com",
+  "copia_oculta_interna": [],
+  "clientes": [
+    {
+      "ifi": "NOMBRE EXACTO DE LA IFI EN EL REPORTE",
+      "alias": [],
+      "nombre_visible": "",
+      "para": ["contacto@ifi-ejemplo.com"],
+      "cc": [],
+      "semanal": true,
+      "mensual": true,
+      "activo": false
+    }
+  ]
+}

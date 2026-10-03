@@ -1,0 +1,56 @@
+name: Enviar reportes a clientes
+
+on:
+  schedule:
+    # GitHub usa UTC: 10:35 de Ecuador, de lunes a viernes, después de que el
+    # proceso horario haya consolidado el correo del día. Cada ejecución envía
+    # solo lo pendiente (semana/mes anterior); estado/reportes-enviados.json
+    # evita duplicados, así que las ejecuciones repetidas son seguras.
+    - cron: "35 15 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      test_recipient:
+        description: "Enviar todo solo a este correo (prueba, no marca como enviado)"
+        required: false
+        default: ""
+      dry_run:
+        description: "Simular sin enviar"
+        type: boolean
+        default: false
+      report_types:
+        description: "weekly, monthly o weekly,monthly"
+        required: false
+        default: "weekly,monthly"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: client-reports
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Obtener repositorio
+        uses: actions/checkout@v6
+
+      - name: Enviar reportes pendientes
+        env:
+          MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+          MS_WORKER_CLIENT_ID: ${{ secrets.MS_WORKER_CLIENT_ID }}
+          MS_WORKER_CLIENT_SECRET: ${{ secrets.MS_WORKER_CLIENT_SECRET }}
+          SHAREPOINT_HOSTNAME: ${{ vars.SHAREPOINT_HOSTNAME }}
+          SHAREPOINT_SITE_PATH: ${{ vars.SHAREPOINT_SITE_PATH }}
+          SHAREPOINT_LIBRARY: ${{ vars.SHAREPOINT_LIBRARY }}
+          SHAREPOINT_DATA_ROOT: ${{ vars.SHAREPOINT_DATA_ROOT }}
+          REPORT_SENDER_MAILBOX: ${{ vars.REPORT_SENDER_MAILBOX }}
+          REPORT_BRAND: ${{ vars.REPORT_BRAND }}
+          REPORT_CURRENCY: ${{ vars.REPORT_CURRENCY }}
+          REPORT_MAX_DELAY_DAYS: ${{ vars.REPORT_MAX_DELAY_DAYS }}
+          REPORT_TYPES: ${{ inputs.report_types || 'weekly,monthly' }}
+          REPORT_TEST_RECIPIENT: ${{ inputs.test_recipient }}
+          REPORT_DRY_RUN: ${{ inputs.dry_run }}
+        run: node automation/send-client-reports.mjs
